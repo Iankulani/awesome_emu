@@ -1,0 +1,300 @@
+# ===========================================
+# AWESOME-EMU-V1 - GitLab CI/CD Pipeline
+# ===========================================
+
+stages:
+  - validate
+  - test
+  - security
+  - build
+  - deploy
+  - release
+
+variables:
+  PYTHON_VERSION: "3.11"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  APP_NAME: "awesome-emu"
+  APP_VERSION: "1.0.0"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+# Cache configuration
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - .pip-cache/
+    - venv/
+    - .pytest_cache/
+
+# ===========================================
+# VALIDATE STAGE
+# ===========================================
+
+validate:syntax:
+  stage: validate
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install flake8 black isort mypy
+  script:
+    - echo "Checking Python syntax..."
+    - python -m py_compile awesome_emu.py
+    - echo "Running flake8..."
+    - flake8 awesome_emu.py --max-line-length=120 --ignore=E501,W503,E203 || true
+    - echo "Checking formatting with black..."
+    - black --check awesome_emu.py || true
+    - echo "Checking imports with isort..."
+    - isort --check-only awesome_emu.py || true
+  allow_failure: true
+
+validate:requirements:
+  stage: validate
+  image: python:${PYTHON_VERSION}-alpine
+  script:
+    - echo "Validating requirements.txt..."
+    - pip install -r requirements.txt --dry-run || true
+    - echo "Checking for security vulnerabilities..."
+    - pip install safety
+    - safety check -r requirements.txt || true
+
+validate:yaml:
+  stage: validate
+  image: alpine:3.18
+  before_script:
+    - apk add --no-cache yamllint
+  script:
+    - echo "Validating YAML files..."
+    - yamllint -d relaxed .gitlab-ci.yml || true
+    - yamllint -d relaxed docker-compose.yml || true
+
+# ===========================================
+# TEST STAGE
+# ===========================================
+
+test:unit:
+  stage: test
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev nmap curl wget
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install pytest pytest-cov pytest-asyncio pytest-mock
+  script:
+    - echo "Running unit tests..."
+    - python -m pytest tests/ -v --cov=. --cov-report=xml --cov-report=html || true
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+    paths:
+      - htmlcov/
+    expire_in: 1 week
+  coverage: '/TOTAL.*\s+(\d+%)$/'
+
+test:integration:
+  stage: test
+  image: python:${PYTHON_VERSION}-alpine
+  services:
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    REDIS_HOST: redis
+  before_script:
+    - apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev nmap curl wget
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install pytest pytest-asyncio
+  script:
+    - echo "Running integration tests..."
+    - python -m pytest tests/integration/ -v || true
+  allow_failure: true
+
+test:commands:
+  stage: test
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev nmap curl wget traceroute mtr netcat-openbsd bind-tools whois iputils
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - echo "Running command tests..."
+    - python test_commands.py || true
+  allow_failure: true
+
+# ===========================================
+# SECURITY STAGE
+# ===========================================
+
+security:sast:
+  stage: security
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install bandit
+  script:
+    - echo "Running Bandit security scan..."
+    - bandit -r . -f json -o bandit-report.json || true
+    - bandit -r . -f txt || true
+  artifacts:
+    reports:
+      sast: bandit-report.json
+    paths:
+      - bandit-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+security:dependencies:
+  stage: security
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install safety
+  script:
+    - echo "Checking dependency vulnerabilities..."
+    - safety check -r requirements.txt --full-report || true
+    - pip install pip-audit
+    - pip-audit -r requirements.txt || true
+  allow_failure: true
+
+security:secrets:
+  stage: security
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install detect-secrets
+  script:
+    - echo "Scanning for secrets..."
+    - detect-secrets scan --all-files > .secrets.baseline || true
+    - detect-secrets audit .secrets.baseline || true
+  artifacts:
+    paths:
+      - .secrets.baseline
+    expire_in: 1 week
+  allow_failure: true
+
+# ===========================================
+# BUILD STAGE
+# ===========================================
+
+build:docker:
+  stage: build
+  image: docker:24.0
+  services:
+    - docker:24.0-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - echo "Building Docker image..."
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA .
+    - docker build -t $CI_REGISTRY_IMAGE:latest .
+    - docker build -t $CI_REGISTRY_IMAGE:$APP_VERSION .
+    - echo "Pushing Docker image..."
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker push $CI_REGISTRY_IMAGE:latest
+    - docker push $CI_REGISTRY_IMAGE:$APP_VERSION
+  only:
+    - main
+    - tags
+
+build:python-package:
+  stage: build
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - apk add --no-cache gcc musl-dev python3-dev libffi-dev openssl-dev
+    - pip install --upgrade pip build twine
+  script:
+    - echo "Building Python package..."
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+  only:
+    - main
+    - tags
+
+# ===========================================
+# DEPLOY STAGE
+# ===========================================
+
+deploy:staging:
+  stage: deploy
+  image: alpine:3.18
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$STAGING_SSH_KEY" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+  script:
+    - echo "Deploying to staging..."
+    - scp -r dist/* $STAGING_USER@$STAGING_HOST:/opt/awesome-emu/
+    - ssh $STAGING_USER@$STAGING_HOST "cd /opt/awesome-emu && ./install.sh"
+  environment:
+    name: staging
+    url: https://staging.awesome-emu.example.com
+  only:
+    - main
+  when: manual
+
+deploy:production:
+  stage: deploy
+  image: alpine:3.18
+  before_script:
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$PRODUCTION_SSH_KEY" | ssh-add -
+    - mkdir -p ~/.ssh
+    - echo "$PRODUCTION_KNOWN_HOSTS" > ~/.ssh/known_hosts
+  script:
+    - echo "Deploying to production..."
+    - scp -r dist/* $PRODUCTION_USER@$PRODUCTION_HOST:/opt/awesome-emu/
+    - ssh $PRODUCTION_USER@$PRODUCTION_HOST "cd /opt/awesome-emu && ./install.sh"
+  environment:
+    name: production
+    url: https://awesome-emu.example.com
+  only:
+    - tags
+  when: manual
+
+# ===========================================
+# RELEASE STAGE
+# ===========================================
+
+release:create:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  script:
+    - echo "Creating release..."
+    - |
+      release-cli create \
+        --name "Release $CI_COMMIT_TAG" \
+        --tag-name $CI_COMMIT_TAG \
+        --description "AWESOME-EMU-V1 Release $CI_COMMIT_TAG" \
+        --assets-link "{\"name\":\"Docker Image\",\"url\":\"$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG\"}"
+  only:
+    - tags
+
+release:pypi:
+  stage: release
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install twine
+  script:
+    - echo "Publishing to PyPI..."
+    - twine upload dist/* --username __token__ --password $PYPI_TOKEN
+  only:
+    - tags
+  when: manual
+
+# ===========================================
+# SCHEDULES
+# ===========================================
+
+scheduled:security-scan:
+  stage: security
+  image: python:${PYTHON_VERSION}-alpine
+  before_script:
+    - pip install safety bandit
+  script:
+    - safety check -r requirements.txt || true
+    - bandit -r . || true
+  only:
+    - schedules

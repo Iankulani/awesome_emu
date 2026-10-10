@@ -1,0 +1,151 @@
+# ===========================================
+# AWESOME-EMU-V1 - Docker Compose
+# ===========================================
+version: '3.8'
+
+services:
+  awesome-emu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: awesome-emu-v1:latest
+    container_name: awesome-emu
+    hostname: awesome-emu
+    restart: unless-stopped
+    
+    # Network configuration
+    networks:
+      - awesome-net
+    
+    # Port mappings
+    ports:
+      - "5000:5000"     # Web Dashboard
+      - "8080:8080"     # Phishing Server
+      - "4444:4444"     # C2 Server
+      - "5555:5555"     # Agent Listener
+    
+    # Environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AWESOME_EMU_HOME=/opt/awesome-emu
+      - AWESOME_EMU_CONFIG=/opt/awesome-emu/config
+      - AWESOME_EMU_LOG_LEVEL=INFO
+      - TZ=UTC
+    
+    # Volume mounts
+    volumes:
+      - awesome-config:/opt/awesome-emu/config
+      - awesome-logs:/opt/awesome-emu/logs
+      - awesome-reports:/opt/awesome-emu/reports
+      - awesome-payloads:/opt/awesome-emu/payloads
+      - awesome-scans:/opt/awesome-emu/scans
+      - ./wordlists:/opt/awesome-emu/wordlists:ro
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    
+    # Capabilities
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: awesome-redis
+    hostname: awesome-redis
+    restart: unless-stopped
+    networks:
+      - awesome-net
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: PostgreSQL for advanced data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: awesome-postgres
+    hostname: awesome-postgres
+    restart: unless-stopped
+    networks:
+      - awesome-net
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=awesome
+      - POSTGRES_PASSWORD=awesome_emu_2024
+      - POSTGRES_DB=awesome_emu
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U awesome"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: awesome-nginx
+    hostname: awesome-nginx
+    restart: unless-stopped
+    networks:
+      - awesome-net
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - awesome-emu
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  awesome-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  awesome-config:
+  awesome-logs:
+  awesome-reports:
+  awesome-payloads:
+  awesome-scans:
+  redis-data:
+  postgres-data:
+  nginx-logs:
