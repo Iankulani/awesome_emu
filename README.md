@@ -15,6 +15,7 @@
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-blue?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/Iankulani/awesome_emu)
 [![Python](https://img.shields.io/badge/python-3.x-blue?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 
+[![GitHub Medal](https://img.shields.io/badge/🏅-Awesome__Emu%20Medal-FFD700?style=for-the-badge&logo=github&logoColor=black)](https://github.com/Iankulani/awesome_emu)
 </div>
 
 
