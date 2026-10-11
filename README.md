@@ -49,11 +49,13 @@ cd awesome_emu
 python3 awesome_emu.py
 ```
 
-
-
 # Documentation
 
 [![Documentation](https://img.shields.io/badge/📖-Documentation-0066ff?style=for-the-badge&logo=readthedocs)](https://iankulani.github.io/Awesome-Emu-Doc/)
+
+# GitLab
+
+[![GitLab Repository](https://img.shields.io/badge/GitLab-Awesome__Emu-FC6D26?style=for-the-badge&logo=gitlab&logoColor=white)](https://gitlab.com/iancarterkulani/awesome_emu)
 
 # References
 
