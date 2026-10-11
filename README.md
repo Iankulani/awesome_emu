@@ -56,3 +56,6 @@ python3 awesome_emu.py
 # References
 
 # Star History
+
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Iankulani/awesome_emu&type=Date)](https://star-history.com/#Iankulani/awesome_emu&Date)
