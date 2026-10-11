@@ -53,6 +53,8 @@ python3 awesome_emu.py
 
 # Documentation
 
+[![Documentation](https://img.shields.io/badge/📖-Documentation-0066ff?style=for-the-badge&logo=readthedocs)](https://iankulani.github.io/Awesome-Emu-Doc/)
+
 # References
 
 # Star History
