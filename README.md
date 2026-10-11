@@ -1,5 +1,8 @@
 # awesome_emu
 
+<img width="360" height="360" alt="emu" src="https://github.com/user-attachments/assets/cbf97658-cb98-4efb-899a-8b08f1efe699" />
+
+
 
 Awesome Emu is an offensive cybersecurity platform designed to support security professionals, penetration testers, ethical hackers, and cybersecurity researchers in assessing digital systems, identifying vulnerabilities, and improving security defenses. The platform provides a centralized environment for running authorized cybersecurity commands through multiple communication channels, including Discord, Telegram, Slack, Google Chat, and a dedicated web application. By integrating these interfaces, Awesome Emu makes security testing and system administration more accessible, flexible, and efficient.
 
